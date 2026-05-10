@@ -37,7 +37,7 @@ function sanitizeBaseName(filename: string): string {
 async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
-  fn: (item: T, index: number) => Promise<R>
+  fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let nextIndex = 0;
@@ -57,20 +57,38 @@ async function mapWithConcurrency<T, R>(
 
 export async function POST(request: Request) {
   try {
+    // Production preflight: ensure at least one embedding provider is configured.
+    if (process.env.NODE_ENV === "production") {
+      const hasOpenAI = !!process.env.OPENAI_API_KEY;
+      const hasGrok = !!process.env.GROK_API_KEY && !!process.env.GROK_BASE_URL;
+      const hasGoogle = !!process.env.GOOGLE_API_KEY;
+      if (!hasOpenAI && !hasGrok && !hasGoogle) {
+        return NextResponse.json(
+          {
+            error:
+              "No embedding provider configured for production. Set OPENAI_API_KEY or GROK_API_KEY+GROK_BASE_URL or GOOGLE_API_KEY.",
+          },
+          { status: 500 },
+        );
+      }
+    }
     const formData = await request.formData();
     const file = formData.get("file");
 
     if (!file || !(file instanceof File)) {
       return NextResponse.json(
-        { error: "Missing file. Use multipart/form-data with field name 'file'." },
-        { status: 400 }
+        {
+          error:
+            "Missing file. Use multipart/form-data with field name 'file'.",
+        },
+        { status: 400 },
       );
     }
 
     if (file.size > MAX_BYTES) {
       return NextResponse.json(
         { error: "File too large. Max size is 10MB." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -82,7 +100,7 @@ export async function POST(request: Request) {
     if (!isPdf && !isTxt) {
       return NextResponse.json(
         { error: "Invalid file type. Upload a .pdf or .txt file." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -96,7 +114,7 @@ export async function POST(request: Request) {
     if (!cleaned) {
       return NextResponse.json(
         { error: "No text could be extracted from the uploaded document." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -107,8 +125,10 @@ export async function POST(request: Request) {
     const chunks = chunkText(cleaned, filename);
     if (chunks.length === 0) {
       return NextResponse.json(
-        { error: "Document produced no usable chunks (try a larger document)." },
-        { status: 400 }
+        {
+          error: "Document produced no usable chunks (try a larger document).",
+        },
+        { status: 400 },
       );
     }
 
@@ -146,17 +166,22 @@ export async function POST(request: Request) {
     if (isRateLimitError(message)) {
       const retryAfter = parseRetryAfterSeconds(message);
       return NextResponse.json(
-        { error: `Upload/ingestion failed: ${message}`, retryAfterSeconds: retryAfter },
+        {
+          error: `Upload/ingestion failed: ${message}`,
+          retryAfterSeconds: retryAfter,
+        },
         {
           status: 429,
-          headers: retryAfter ? { "Retry-After": String(retryAfter) } : undefined,
-        }
+          headers: retryAfter
+            ? { "Retry-After": String(retryAfter) }
+            : undefined,
+        },
       );
     }
 
     return NextResponse.json(
       { error: `Upload/ingestion failed: ${message}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

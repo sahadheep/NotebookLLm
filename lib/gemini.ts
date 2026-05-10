@@ -16,7 +16,9 @@ function getGenAI(): GoogleGenerativeAI {
   return new GoogleGenerativeAI(apiKey);
 }
 
-const EMBEDDING_MODEL_PRIMARY = "text-embedding-004";
+// Use a Gemini embedding model as the primary choice — some API keys
+// don't expose the legacy `text-embedding-004` model which causes 404s.
+const EMBEDDING_MODEL_PRIMARY = "gemini-embedding-001";
 
 type ApiVersion = "v1" | "v1beta";
 
@@ -92,6 +94,18 @@ export async function embedText(
     taskType === "RETRIEVAL_DOCUMENT"
       ? GeminiTaskType.RETRIEVAL_DOCUMENT
       : GeminiTaskType.RETRIEVAL_QUERY;
+
+  // If OpenAI is configured, prefer OpenAI embeddings first to avoid
+  // Google model 404/403 issues for keys that don't expose embedding models.
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const ov = await openai.embedText(text, taskType);
+      return ov;
+    } catch (oe) {
+      console.error("[gemini] preferred openai.embedText failed:", oe);
+      // fall through to try Google and other fallbacks
+    }
+  }
 
   // To ensure query embeddings match document embeddings, we resolve and cache
   // a single working model + API version on the first successful call.
@@ -225,19 +239,24 @@ export async function generateAnswerWithFallback(
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (
-      (msg.includes("denied") ||
-        msg.includes("403") ||
-        msg.includes("not found")) &&
-      process.env.GROK_API_KEY
+      msg.includes("denied") ||
+      msg.includes("403") ||
+      msg.includes("not found")
     ) {
-      return await grok.generateAnswer(systemPrompt, question);
-    }
-    // If Grok wasn't configured or failed, try OpenAI if available.
-    if (process.env.OPENAI_API_KEY) {
-      try {
-        return await openai.generateAnswer(systemPrompt, question);
-      } catch (oe) {
-        // fall through to rethrow the original error below
+      // Prefer OpenAI if available, then Grok.
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          return await openai.generateAnswer(systemPrompt, question);
+        } catch (oe) {
+          console.error("[gemini] openai.generateAnswer failed:", oe);
+        }
+      }
+      if (process.env.GROK_API_KEY && process.env.GROK_BASE_URL) {
+        try {
+          return await grok.generateAnswer(systemPrompt, question);
+        } catch (ge) {
+          console.error("[gemini] grok.generateAnswer failed:", ge);
+        }
       }
     }
     throw e;
