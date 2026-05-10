@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const providers: Record<string, boolean | string> = {
+  const providers: Record<string, boolean | string | null> = {
     GOOGLE_API_KEY: !!process.env.GOOGLE_API_KEY,
     OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
     GROK_API_KEY: !!process.env.GROK_API_KEY,
