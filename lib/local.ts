@@ -11,7 +11,7 @@ export function embedTextLocal(text: string, dim = 256): number[] {
     const digest = h.digest("hex").slice(0, 16); // 64 bits
     // parse as integer and normalize
     const intVal = parseInt(digest, 16);
-    const max = 0xffffffffffffffffn; // not used directly, keep normalization simple
+    // `max` not needed here; keep normalization simple without BigInt literals
     // map to [-1,1]
     const v = ((intVal % 1000000) / 1000000) * 2 - 1;
     out[i] = v;
