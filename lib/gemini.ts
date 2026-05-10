@@ -167,16 +167,19 @@ export async function embedText(
             lastNotFound = oe instanceof Error ? oe : e;
           }
         }
-        // If GROK_API_KEY is present, try Grok provider next.
-        if (process.env.GROK_API_KEY) {
+        // If GROK_API_KEY and GROK_BASE_URL are present, try Grok provider next.
+        if (process.env.GROK_API_KEY && process.env.GROK_BASE_URL) {
           try {
             const gv = await grok.embedText(text, taskType);
             return gv;
           } catch (ge) {
             console.error("[gemini] grok.embedText failed:", ge);
-            // swallow and continue to surface the original lastNotFound below
             lastNotFound = ge instanceof Error ? ge : e;
           }
+        } else if (process.env.GROK_API_KEY && !process.env.GROK_BASE_URL) {
+          console.warn(
+            "[gemini] GROK_API_KEY present but GROK_BASE_URL missing — skipping Grok fallback",
+          );
         }
         // If in development, try a local deterministic embedding fallback.
         if (process.env.NODE_ENV !== "production") {
